@@ -8,6 +8,15 @@
 
 #include "MultiplayerSessionsSubsystem.generated.h"
 
+//
+// 메뉴 클래스에 필요한 Custom delegate 선언
+//
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMultiplayerOnCreateSessionComplete, bool, bWasSuccessful);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FMultiplayerOnFindSessionsComplete, const TArray<FOnlineSessionSearchResult>& SessionResults, bool bWasSuccessful)
+DECLARE_MULTICAST_DELEGATE_OneParam(FMultiplayerOnJoinSessionComplete, EOnJoinSessionCompleteResult::Type Result);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMultiplayerOnDestroySessionComplete, bool, bWasSuccessful);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMultiplayerOnStartSessionComplete, bool, bWasSuccessful);
+
 /**
  * 
  */
@@ -27,6 +36,14 @@ public:
 	void DestroySession();
 	void StartSession();
 
+	//
+	// 메뉴 클래스에 필요한 Custom delegate 콜백 함수
+	//
+	FMultiplayerOnCreateSessionComplete MultiplayerOnCreateSessionComplete;
+	FMultiplayerOnFindSessionsComplete MultiplayerOnFindSessionsComplete;
+	FMultiplayerOnJoinSessionComplete MultiplayerOnJoinSessionComplete;
+	FMultiplayerOnDestroySessionComplete MultiplayerOnDestroySessionComplete;
+	FMultiplayerOnStartSessionComplete MultiplayerOnStartSessionComplete;
 protected:
 	
 	//
@@ -42,7 +59,7 @@ protected:
 private:
 	IOnlineSessionPtr SessionInterface;
 	TSharedPtr<FOnlineSessionSettings> LastSessionSettings;
-
+	TSharedPtr<FOnlineSessionSearch> LastSessionSearch;
 	//
 	// To add to the online session interface delegate list
 	// We'll bind our MultiplayerSessionSubsystem internal callbacks to these.
@@ -57,4 +74,8 @@ private:
 	FDelegateHandle DestroySessionCompleteDelegateHandle;
 	FOnStartSessionCompleteDelegate StartSessionCompleteDelegate;
 	FDelegateHandle StartSessionCompleteDelegateHandle;
+
+	bool bCreateSessionOnDestroy{ false };
+	int32 LastNumPublicConnections;
+	FString LastMatchType;
 };

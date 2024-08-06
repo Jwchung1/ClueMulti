@@ -4,9 +4,13 @@
 #include "Menu.h"
 #include "Components/Button.h"
 #include "MultiplayerSessionsSubsystem.h"
+#include "OnlineSessionSettings.h"
+#include "OnlineSubsystem.h"
 
-void UMenu::MenuSetup(int32 NumberOfPublicConnections, FString TypeOfMatch)
+
+void UMenu::MenuSetup(int32 NumberOfPublicConnections, FString TypeOfMatch, FString LobbyPath)
 {
+	PathToLobby = FString::Printf(TEXT("%s?listen"), *LobbyPath);
 	NumPublicConnections = NumberOfPublicConnections;
 	MatchType = TypeOfMatch;
 
@@ -32,6 +36,15 @@ void UMenu::MenuSetup(int32 NumberOfPublicConnections, FString TypeOfMatch)
 	if (GameInstance)
 	{
 		MultiplayerSessionsSubsystem = GameInstance->GetSubsystem<UMultiplayerSessionsSubsystem>();
+	}
+
+	if (MultiplayerSessionsSubsystem)
+	{
+		MultiplayerSessionsSubsystem->MultiplayerOnCreateSessionComplete.AddDynamic(this, &ThisClass::OnCreateSession);
+		MultiplayerSessionsSubsystem->MultiplayerOnFindSessionsComplete.AddUObject(this, &ThisClass::OnFindSessions);
+		MultiplayerSessionsSubsystem->MultiplayerOnJoinSessionComplete.AddUObject(this, &ThisClass::OnJoinSession);
+		MultiplayerSessionsSubsystem->MultiplayerOnDestroySessionComplete.AddDynamic(this, &ThisClass::OnDestroySession);
+		MultiplayerSessionsSubsystem->MultiplayerOnStartSessionComplete.AddDynamic(this, &ThisClass::OnStartSession);
 	}
 }
 
@@ -61,29 +74,101 @@ void UMenu::NativeDestruct()
 	Super::NativeDestruct();
 }
 
-void UMenu::HostButtonClicked()
+void UMenu::OnCreateSession(bool bWasSuccessful)
 {
-	if (GEngine)
+	if (bWasSuccessful)
 	{
-		GEngine->AddOnScreenDebugMessage(-1, 15.f, FColor::Yellow, FString::Printf(TEXT("Host Button clicked")));
-	}
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 15.f, FColor::Yellow, FString::Printf(TEXT("Session created successfully")));
+		}
 
-	if (MultiplayerSessionsSubsystem)
-	{
-		MultiplayerSessionsSubsystem->CreateSession(NumPublicConnections, MatchType);
 		UWorld* World = GetWorld();
 		if (World)
 		{
-			World->ServerTravel("/Game/ThirdPerson/Maps/Lobby?listen");
+			World->ServerTravel(PathToLobby);
 		}
+	}
+	else
+	{
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 15.f, FColor::Red, FString::Printf(TEXT("Failed to create session")));
+		}
+		HostButton->SetIsEnabled(true);
+	}
+}
+
+void UMenu::OnFindSessions(const TArray<FOnlineSessionSearchResult>& SessionResults, bool bWasSuccessful)
+{
+	if (MultiplayerSessionsSubsystem == nullptr)
+	{
+		return;
+	}
+	
+	for (auto Result : SessionResults)
+	{
+		FString SettingsValue;
+		Result.Session.SessionSettings.Get(FName("MatchType"), SettingsValue);
+		if (SettingsValue == MatchType)
+		{
+			MultiplayerSessionsSubsystem->JoinSession(Result);
+			return;
+		}
+	}
+	if (!bWasSuccessful || SessionResults.Num() == 0)
+	{
+		JoinButton->SetIsEnabled(true);
+	}
+}
+
+void UMenu::OnJoinSession(EOnJoinSessionCompleteResult::Type Result)
+{
+	IOnlineSubsystem* Subsystem = IOnlineSubsystem::Get();
+	if (Subsystem)
+	{
+		IOnlineSessionPtr SessionInterface = Subsystem->GetSessionInterface();
+		if (SessionInterface.IsValid())
+		{
+			FString Address;
+			SessionInterface->GetResolvedConnectString(NAME_GameSession, Address);
+
+			APlayerController* PlayerController = GetGameInstance()->GetFirstLocalPlayerController();
+			if (PlayerController)
+			{
+				PlayerController->ClientTravel(Address, ETravelType::TRAVEL_Absolute);
+			}
+		}
+	}
+	if (Result != EOnJoinSessionCompleteResult::Success)
+	{
+		JoinButton->SetIsEnabled(true);
+	}
+}
+
+void UMenu::OnDestroySession(bool bWasSuccessful)
+{
+}
+
+void UMenu::OnStartSession(bool bWasSuccessful)
+{
+}
+
+void UMenu::HostButtonClicked()
+{
+	HostButton->SetIsEnabled(false);
+	if (MultiplayerSessionsSubsystem)
+	{
+		MultiplayerSessionsSubsystem->CreateSession(NumPublicConnections, MatchType);
 	}
 }
 
 void UMenu::JoinButtonClicked()
 {
-	if (GEngine)
+	JoinButton->SetIsEnabled(false);
+	if (MultiplayerSessionsSubsystem)
 	{
-		GEngine->AddOnScreenDebugMessage(-1, 15.f, FColor::Yellow, FString::Printf(TEXT("join Button clicked")));
+		MultiplayerSessionsSubsystem->FindSessions(10000);
 	}
 }
 
